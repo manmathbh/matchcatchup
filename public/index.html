@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Missed It? — cricket catch-up</title>
+  <meta name="description" content="A 20-second AI catch-up for cricket fans who stepped away mid-match.">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">🏏</span>
+      <div>
+        <h1>Missed It?</h1>
+        <p class="tagline">Back in 20 seconds.</p>
+      </div>
+    </div>
+    <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle dark mode">◐</button>
+  </header>
+
+  <main>
+    <!-- Live scoreboard -->
+    <section class="card score-card" aria-live="polite">
+      <div class="score-head">
+        <span class="badge sim">SIMULATED MATCH · fictional teams</span>
+        <span class="live-dot" id="liveDot">LIVE</span>
+      </div>
+      <div class="teams">
+        <div>
+          <div class="team-name" id="batTeam">—</div>
+          <div class="score"><span id="score">0/0</span> <small id="overs">(0.0)</small></div>
+        </div>
+        <div class="vs">chasing <strong id="target">—</strong><br><span id="bowlTeam" class="muted">—</span></div>
+      </div>
+      <p class="equation" id="equation">Connecting to the match…</p>
+      <div class="wp" id="liveWp" hidden>
+        <div class="wp-labels"><span id="wpBatLabel"></span><span class="muted">rough win chance</span><span id="wpBowlLabel"></span></div>
+        <div class="wp-bar"><div class="wp-fill" id="wpFill"></div></div>
+      </div>
+      <div class="crease muted" id="crease"></div>
+      <div class="last-over">
+        <span class="muted">This over</span>
+        <div class="balls" id="lastBalls"></div>
+      </div>
+    </section>
+
+    <!-- Catch-up form -->
+    <section class="card">
+      <h2>Where did you leave off?</h2>
+      <div class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-source="sim" aria-selected="true" type="button">Live match</button>
+        <button role="tab" class="tab" data-source="paste" aria-selected="false" type="button">Paste commentary</button>
+      </div>
+
+      <form id="catchupForm" novalidate>
+        <div id="simFields">
+          <label for="sinceSlider" class="field-label">I last watched at the end of over <strong id="sinceValue">0</strong> <span class="muted" id="sinceScore"></span></label>
+          <input type="range" id="sinceSlider" min="0" max="0" value="0" step="1">
+          <div class="chips" id="quickChips">
+            <button type="button" class="chip" data-ago="1">1 over ago</button>
+            <button type="button" class="chip" data-ago="3">3 overs ago</button>
+            <button type="button" class="chip" data-ago="5">5 overs ago</button>
+            <button type="button" class="chip" data-ago="99">Start of chase</button>
+          </div>
+        </div>
+
+        <div id="pasteFields" hidden>
+          <label for="commentary" class="field-label">Paste ball-by-ball commentary from any real match (oldest first, one ball per line).</label>
+          <textarea id="commentary" rows="7" maxlength="6000" placeholder="15.1 Bumrah to Smith, FOUR! Driven through cover…&#10;15.2 Bumrah to Smith, no run…"></textarea>
+          <div class="muted small"><span id="charCount">0</span>/6000 characters · we only use what you paste</div>
+        </div>
+
+        <fieldset class="seg">
+          <legend>I'm a…</legend>
+          <label><input type="radio" name="fanType" value="beginner"><span>Beginner</span></label>
+          <label><input type="radio" name="fanType" value="casual" checked><span>Casual fan</span></label>
+          <label><input type="radio" name="fanType" value="hardcore"><span>Hardcore</span></label>
+        </fieldset>
+        <fieldset class="seg">
+          <legend>Language</legend>
+          <label><input type="radio" name="language" value="en" checked><span>English</span></label>
+          <label><input type="radio" name="language" value="hinglish"><span>Hinglish</span></label>
+          <label><input type="radio" name="language" value="mr"><span>मराठी</span></label>
+        </fieldset>
+
+        <button class="primary" id="goBtn" type="submit">Catch me up</button>
+        <p class="error" id="formError" role="alert" hidden></p>
+      </form>
+    </section>
+
+    <!-- Result -->
+    <section class="card result" id="result" hidden aria-live="polite"></section>
+
+    <!-- Watch room -->
+    <section class="card room">
+      <h2>Watch room</h2>
+      <p class="muted small">Everyone on this link shares one room. Tap a reaction, or share your poll from a catch-up. The room clears when the server restarts.</p>
+      <ol class="room-feed" id="roomFeed" aria-live="polite"></ol>
+      <div class="reactions" id="reactions" aria-label="Send a reaction"></div>
+    </section>
+
+    <footer class="muted small">
+      <p>Simulated match with fictional teams. No betting or money involved.</p>
+      <p>Recaps are written by Claude from the match feed. Win chance comes from a simple stats model.</p>
+    </footer>
+  </main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

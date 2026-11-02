@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: missed-it
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false # you paste the key in the Render dashboard; it never lives in git
+      - key: AI_DAILY_CAP
+        value: "300"
+      - key: NODE_VERSION
+        value: "24.14.1" # same as .node-version

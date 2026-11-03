@@ -14,10 +14,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_STREAMS_PER_IP = 6;
 const MAX_STREAMS = 2000;
+const HEARTBEAT_MS = 15_000;
 
 const engine = new MatchEngine({
   overIntervalMs: Number(process.env.OVER_INTERVAL_MS) || 7000,
   startAtOver: Number(process.env.START_AT_OVER ?? 6),
+  restartDelayMs: Number(process.env.RESTART_DELAY_MS ?? 10_000), // capped at 15 s by the engine
 });
 const room = new Room();
 
@@ -67,7 +69,7 @@ function badRequest(res, err) {
 app.get('/api/health', (req, res) => res.json({ ok: true, ai: aiEnabled() }));
 
 app.get('/api/state', (req, res) => {
-  res.json({ snapshot: engine.snapshot(), room: room.feed, reactions: REACTIONS, ai: aiEnabled(), limits: { commentary: MAX_COMMENTARY_CHARS } });
+  res.json({ snapshot: engine.snapshot(), room: room.currentFeed(), reactions: REACTIONS, ai: aiEnabled(), limits: { commentary: MAX_COMMENTARY_CHARS } });
 });
 
 // Server-sent events: overs, resets, room reactions and poll updates.
@@ -80,11 +82,16 @@ app.get('/api/live', (req, res) => {
   }
   streamsByIp.set(ip, open + 1);
 
+  // Headers that stop proxies (Render, nginx, CDNs) from buffering or rewriting the stream.
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  req.socket.setTimeout(0);
+  req.socket.setNoDelay(true);
   res.flushHeaders();
-  res.write(`event: snapshot\ndata: ${JSON.stringify(engine.snapshot())}\n\n`);
+  // retry: tells the browser to reconnect after 3 s if the stream drops.
+  res.write(`retry: 3000\nevent: snapshot\ndata: ${JSON.stringify(engine.snapshot())}\n\n`);
   const remove = room.addClient(res);
-  const ping = setInterval(() => res.write(': ping\n\n'), 20_000);
+  // Heartbeat comment so idle-connection timeouts never close a quiet stream.
+  const ping = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
   req.on('close', () => {
     clearInterval(ping);
     remove();

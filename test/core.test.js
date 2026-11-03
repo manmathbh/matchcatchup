@@ -79,3 +79,30 @@ test('numbers are always shown with Western digits', () => {
   assert.equal(westernDigits('SAH ९८/२, ४२ चेंडूत ६6 धावा'), 'SAH 98/2, 42 चेंडूत 66 धावा');
   assert.equal(westernDigits('no digits here'), 'no digits here');
 });
+
+test('a finished match is replaced by a new one within 15 seconds', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'] });
+  const engine = new MatchEngine({ overIntervalMs: 1000, startAtOver: 0 });
+  const resets = [];
+  engine.on('reset', (s) => resets.push(s));
+  engine.start();
+  t.after(() => engine.stop());
+
+  for (let i = 0; i < 25 && engine.status === 'live'; i++) t.mock.timers.tick(1000);
+  assert.equal(engine.status, 'done');
+  const finished = engine.matchId;
+  const { restartInMs } = engine.snapshot();
+  assert.ok(restartInMs > 0 && restartInMs <= 15_000, `restartInMs=${restartInMs}`);
+
+  t.mock.timers.tick(restartInMs - 1);
+  assert.equal(engine.matchId, finished, 'not restarted early');
+  t.mock.timers.tick(1);
+  assert.notEqual(engine.matchId, finished);
+  assert.equal(engine.status, 'live');
+  assert.equal(resets.at(-1).matchId, engine.matchId, 'listeners are told about the new match');
+});
+
+test('restart delay is capped at 15 seconds', () => {
+  assert.equal(new MatchEngine({ restartDelayMs: 60_000 }).restartDelayMs, 15_000);
+  assert.equal(new MatchEngine().restartDelayMs, 10_000);
+});

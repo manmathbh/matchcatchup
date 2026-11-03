@@ -71,9 +71,7 @@ function renderScore(s) {
   $('score').textContent = `${s.score}/${s.wickets}`;
   $('overs').textContent = `(${s.overs})`;
   $('target').textContent = s.target;
-  $('equation').textContent = s.status === 'done'
-    ? `${s.result}. New match starting soon…`
-    : `${s.battingShort} need ${s.runsNeeded} off ${s.ballsLeft} balls · RRR ${s.rrr}`;
+  renderEquation(s);
   $('liveDot').classList.toggle('off', s.status === 'done');
   $('liveDot').textContent = s.status === 'done' ? 'FINISHED' : 'LIVE';
 
@@ -87,6 +85,23 @@ function renderScore(s) {
   $('lastBalls').replaceChildren(...(s.lastOver?.balls ?? []).map((b) => h('span', { class: `ball b${b}`, title: b === '•' ? 'dot ball' : b }, b)));
 
   updateSlider();
+}
+
+// While a match is finished, count down to the next one the server has scheduled.
+let countdownTimer = null;
+function renderEquation(s) {
+  clearInterval(countdownTimer);
+  if (s.status !== 'done') {
+    $('equation').textContent = `${s.battingShort} need ${s.runsNeeded} off ${s.ballsLeft} balls · RRR ${s.rrr}`;
+    return;
+  }
+  const startsAt = s.restartInMs != null ? Date.now() + s.restartInMs : null;
+  const draw = () => {
+    const secs = startsAt ? Math.ceil((startsAt - Date.now()) / 1000) : null;
+    $('equation').textContent = `${s.result}. ${secs > 0 ? `Next match in ${secs}s…` : 'Next match starting…'}`;
+  };
+  draw();
+  countdownTimer = setInterval(draw, 1000);
 }
 
 function updateSlider() {
@@ -118,20 +133,79 @@ $('quickChips').addEventListener('click', (e) => {
 });
 
 /* ---------- Live connection ---------- */
-function connect() {
-  const es = new EventSource('/api/live');
-  es.addEventListener('snapshot', (e) => renderScore(JSON.parse(e.data)));
-  es.addEventListener('over', (e) => renderScore(JSON.parse(e.data).snapshot));
-  es.addEventListener('reset', (e) => {
-    state.sinceTouched = false;
-    renderScore(JSON.parse(e.data));
-    toast('New simulated match started');
-  });
-  es.addEventListener('room', (e) => addRoomItem(JSON.parse(e.data)));
-  es.addEventListener('poll', (e) => updatePoll(JSON.parse(e.data)));
-  es.onerror = () => { $('liveDot').classList.add('off'); $('liveDot').textContent = 'RECONNECTING'; };
-  es.onopen = () => { $('liveDot').classList.remove('off'); };
+// The event stream is the fast path. If it errors, closes, or delivers nothing for
+// 15 s (a proxy buffering it, a server waking from sleep), poll /api/state every 5 s
+// until the stream delivers again, and keep reopening the stream in the background.
+const STALE_MS = 15_000;
+const POLL_MS = 5_000;
+const live = { es: null, openedAt: 0, lastEventAt: 0, pollTimer: null };
+
+// Every snapshot, from the stream or from polling, goes through here. A new matchId
+// means a new match, even if the stream's 'reset' message never arrived.
+function applySnapshot(s) {
+  const prev = state.snapshot;
+  if (prev && prev.matchId === s.matchId && s.completedOvers < prev.completedOvers) return; // stale
+  const isNewMatch = Boolean(prev) && prev.matchId !== s.matchId;
+  if (isNewMatch) state.sinceTouched = false;
+  renderScore(s);
+  if (isNewMatch) toast('New simulated match started');
 }
+
+function connect() {
+  live.es?.close();
+  const es = new EventSource('/api/live');
+  live.es = es;
+  live.openedAt = Date.now();
+  live.lastEventAt = Date.now();
+  const on = (name, fn) => es.addEventListener(name, (e) => {
+    live.lastEventAt = Date.now();
+    stopPolling();
+    fn(JSON.parse(e.data));
+  });
+  on('snapshot', applySnapshot);
+  on('over', (d) => applySnapshot(d.snapshot));
+  on('reset', applySnapshot);
+  on('room', addRoomItem);
+  on('poll', updatePoll);
+  es.onerror = () => startPolling();
+}
+
+function startPolling() {
+  if (live.pollTimer) return;
+  pollOnce();
+  live.pollTimer = setInterval(pollOnce, POLL_MS);
+}
+
+function stopPolling() {
+  clearInterval(live.pollTimer);
+  live.pollTimer = null;
+}
+
+async function pollOnce() {
+  try {
+    const s = await api('/api/state');
+    applySnapshot(s.snapshot);
+    for (const item of s.room) {
+      addRoomItem(item);
+      if (item.kind === 'poll') updatePoll(item.poll);
+    }
+  } catch {
+    $('liveDot').classList.add('off');
+    $('liveDot').textContent = 'RECONNECTING';
+  }
+}
+
+// Watchdog: a stream that has gone quiet is treated as broken.
+setInterval(() => {
+  if (Date.now() - live.lastEventAt < STALE_MS) return;
+  startPolling();
+  if (Date.now() - live.openedAt >= STALE_MS) connect();
+}, POLL_MS);
+
+// Phones pause background tabs; catch up straight away when the page is shown again.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Date.now() - live.lastEventAt >= STALE_MS) pollOnce();
+});
 
 /* ---------- Form ---------- */
 document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
@@ -343,7 +417,7 @@ function addRoomItem(item) {
 (async function boot() {
   try {
     const s = await api('/api/state');
-    renderScore(s.snapshot);
+    applySnapshot(s.snapshot);
     renderReactionButtons(s.reactions);
     if (s.room.length) s.room.forEach(addRoomItem);
     else $('roomFeed').append(h('li', { class: 'empty' }, 'Quiet in here. Tap a reaction to get it going.'));

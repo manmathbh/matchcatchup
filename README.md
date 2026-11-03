@@ -55,6 +55,7 @@ AI mode: ON (model gemini-flash-lite-latest, daily cap 300)
 | `GEMINI_MODEL` | `gemini-flash-lite-latest` | Gemini model used for recaps. Fast and cheap; `gemini-flash-latest` writes a bit richer but is often overloaded at peak times. |
 | `OVER_INTERVAL_MS` | `7000` | One simulated over every N ms |
 | `START_AT_OVER` | `6` | Overs to fast-forward on start, so there's history to catch up on |
+| `RESTART_DELAY_MS` | `10000` | Pause between a match finishing and the next one starting (capped at 15000) |
 | `PORT` | `3000` | HTTP port (Render sets this for you) |
 
 ## Deploy on Render
@@ -77,7 +78,7 @@ The free plan sleeps after about 15 idle minutes, so the first visit after that 
 | `npm run smoke` fails on language | The model replied in the wrong script. Run it again. If it keeps failing, check `LANG_GUIDE` in `lib/prompt.js`. |
 | Every recap says "Basic recap · no AI" | Check the server log for an `AI fallback:` line. `Gemini API error 429` means the quota or rate limit was hit (common on the free tier): wait, or enable billing in AI Studio. A `5xx` means Google-side trouble. Other lines: timeout or invalid output. |
 | `/api/health` shows `"ai":false` on Render | `GEMINI_API_KEY` isn't set in the Render Environment tab, or the key was rejected. Fix it and click **Manual Deploy → Restart**. |
-| Live score never updates on Render | Make sure nothing in front of the app (proxy, CDN) buffers server-sent events. Render's own proxy works as is. |
+| Live score updates slowly (every ~5 s) or only after ~15 s | The live stream is being buffered or dropped by something in between, so the page has switched to polling. It still works; check that no extra proxy or CDN sits in front of Render. |
 | "Too many …" errors | Per-IP rate limits (below). Wait a minute. |
 
 ---
@@ -108,8 +109,11 @@ If there's no key, the key is rejected, the daily cap is reached, the API times 
 - **Display.** Everything is rendered as plain text (no HTML injection), with a strict Content-Security-Policy and no third-party scripts.
 - **Key handling.** The key is read from the environment on the server only. It's never sent to the browser, written to logs, or included in error messages. `/api/health` reports only `ai: true/false`.
 
-### 6. The simulator
-`lib/matchEngine.js` plays a seeded T20 chase ball by ball. It models scoring that varies by phase, pressure when the required rate climbs, strike rotation, bowler quotas and milestones, and it emits one over per tick. A given seed always plays out the same way, so before each match the engine quietly pre-plays candidate seeds and keeps one that stays close to the end. A new match starts about 45 seconds after one finishes.
+### 6. Live updates that survive proxies
+The page gets overs, new matches and room activity over a server-sent event stream. The server sends headers that tell proxies not to buffer it (`Cache-Control: no-cache`, `X-Accel-Buffering: no`) and a heartbeat comment every 15 s so idle timeouts don't cut it. If the stream errors, closes, or delivers nothing for 15 s anyway, the page polls `/api/state` every 5 s and keeps reopening the stream in the background; polling stops as soon as the stream delivers again. Either way the page recognises a new match by its id, so it switches without a reload even if a "new match" message was lost.
+
+### 7. The simulator
+`lib/matchEngine.js` plays a seeded T20 chase ball by ball. It models scoring that varies by phase, pressure when the required rate climbs, strike rotation, bowler quotas and milestones, and it emits one over per tick. A given seed always plays out the same way, so before each match the engine quietly pre-plays candidate seeds and keeps one that stays close to the end. A new match starts 10 seconds after one finishes (on its own timer, so never more than 15 s), and the page counts down to it.
 
 ---
 

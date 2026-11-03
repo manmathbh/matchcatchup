@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { MatchEngine } from './lib/matchEngine.js';
 import { Room, REACTIONS, hashIp } from './lib/room.js';
 import { generateCatchup, MAX_COMMENTARY_CHARS } from './lib/catchup.js';
-import { aiEnabled, verifyKey } from './lib/claude.js';
+import { aiEnabled, verifyKey } from './lib/ai.js';
 import { FAN_TYPES, LANGUAGES } from './lib/prompt.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));

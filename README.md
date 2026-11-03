@@ -22,11 +22,11 @@ It adapts to **fan type** (beginner / casual / hardcore) and **language** (Engli
 
 ## Setup
 
-Requirements: Node 24 (pinned in `.node-version`) and, for AI recaps, an Anthropic API key.
+Requirements: Node 24 (pinned in `.node-version`) and, for AI recaps, a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
 
 ```bash
 npm install
-cp .env.example .env      # then put your key after ANTHROPIC_API_KEY=
+cp .env.example .env      # then put your key after GEMINI_API_KEY=
 npm start                 # http://localhost:3000
 ```
 
@@ -34,7 +34,7 @@ The startup log tells you which mode you're in. It never prints the key.
 
 ```
 Missed It? listening on port 3000
-AI mode: ON (model claude-opus-5-5, daily cap 300)
+AI mode: ON (model gemini-flash-lite-latest, daily cap 300)
 ```
 
 **Without a key the app still works.** It shows a basic recap built straight from the match feed, labelled "Basic recap · no AI".
@@ -44,16 +44,15 @@ AI mode: ON (model claude-opus-5-5, daily cap 300)
 | `npm start` | Run the server |
 | `npm run dev` | Run and restart on file changes |
 | `npm test` | Unit tests (no API calls, free) |
-| `npm run smoke` | Real end-to-end check: 3 Claude calls (English, Hinglish, Marathi), about 5–10 US cents. Prints timing, grounding and language checks, then **PASS** or **FAIL** (exit code 1 on failure). |
+| `npm run smoke` | Real end-to-end check: 3 small Gemini requests (English, Hinglish, Marathi). Prints timing, grounding and language checks, then **PASS** or **FAIL** (exit code 1 on failure). |
 
 ### Settings (`.env` locally, Environment tab on Render)
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Server-side only. Never sent to the browser or logged. |
-| `AI_DAILY_CAP` | `300` | Max Claude calls per day, reset at midnight India time. After that, everyone gets the basic recap. `0` turns AI off. |
-| `MISSEDIT_MODEL` | `claude-opus-5-5` | Claude model used for recaps |
-| `MISSEDIT_EFFORT` | `low` | Reasoning effort; `low` keeps answers fast and cheap |
+| `GEMINI_API_KEY` | — | Server-side only. Sent only to Google in the `X-goog-api-key` header; never to the browser or the logs. |
+| `AI_DAILY_CAP` | `300` | Max AI calls per day, reset at midnight India time. After that, everyone gets the basic recap. `0` turns AI off. |
+| `GEMINI_MODEL` | `gemini-flash-lite-latest` | Gemini model used for recaps. Fast and cheap; `gemini-flash-latest` writes a bit richer but is often overloaded at peak times. |
 | `OVER_INTERVAL_MS` | `7000` | One simulated over every N ms |
 | `START_AT_OVER` | `6` | Overs to fast-forward on start, so there's history to catch up on |
 | `PORT` | `3000` | HTTP port (Render sets this for you) |
@@ -62,7 +61,7 @@ AI mode: ON (model claude-opus-5-5, daily cap 300)
 
 1. Push this repo to GitHub. `.env` and `node_modules/` are git-ignored.
 2. In the Render dashboard, choose **New → Blueprint**, connect GitHub, and pick the repo. Render reads `render.yaml`: free web service, `npm ci`, `npm start`, health check `/api/health`, Node 24.14.1, `AI_DAILY_CAP=300`.
-3. When Render asks for `ANTHROPIC_API_KEY`, paste the key. Click **Apply**.
+3. When Render asks for `GEMINI_API_KEY`, paste the key. Click **Apply**.
 4. When the deploy is live, open `https://<your-service>.onrender.com/api/health`. It should show `{"ok":true,"ai":true}`.
 
 The free plan sleeps after about 15 idle minutes, so the first visit after that takes 30–60 seconds. Keep it to **one instance**: the match, room and polls live in memory.
@@ -71,12 +70,13 @@ The free plan sleeps after about 15 idle minutes, so the first visit after that 
 
 | Symptom | Fix |
 |---|---|
-| Log says `AI mode: OFF (no ANTHROPIC_API_KEY set)` | `.env` is missing or misnamed. It must be exactly `.env` in the project folder (not `.env.txt`). On Render, check the Environment tab. |
-| Log says `AI mode: OFF (API key was rejected)` | Key mistyped, revoked, or the account has no credit. Create a new key in the Anthropic Console and check Billing. |
+| Log says `AI mode: OFF (no GEMINI_API_KEY set)` | `.env` is missing or misnamed. It must be exactly `.env` in the project folder (not `.env.txt`). On Render, check the Environment tab. |
+| Log says `AI mode: OFF (API key was rejected)` | Key mistyped or deleted. Create a new one in Google AI Studio. |
+| Log says `model "…" not found` | `GEMINI_MODEL` names a model that doesn't exist. Remove it to use the default. |
 | `npm run smoke` fails with `Daily AI cap reached` | `AI_DAILY_CAP` is `0` or very low. Raise it. |
 | `npm run smoke` fails on language | The model replied in the wrong script. Run it again. If it keeps failing, check `LANG_GUIDE` in `lib/prompt.js`. |
-| Every recap says "Basic recap · no AI" | Check the server log for an `AI fallback:` line with the reason (timeout, rate limit, invalid output). |
-| `/api/health` shows `"ai":false` on Render | `ANTHROPIC_API_KEY` isn't set in the Render Environment tab, or the key was rejected. Fix it and click **Manual Deploy → Restart**. |
+| Every recap says "Basic recap · no AI" | Check the server log for an `AI fallback:` line. `Gemini API error 429` means the quota or rate limit was hit (common on the free tier): wait, or enable billing in AI Studio. A `5xx` means Google-side trouble. Other lines: timeout or invalid output. |
+| `/api/health` shows `"ai":false` on Render | `GEMINI_API_KEY` isn't set in the Render Environment tab, or the key was rejected. Fix it and click **Manual Deploy → Restart**. |
 | Live score never updates on Render | Make sure nothing in front of the app (proxy, CDN) buffers server-sent events. Render's own proxy works as is. |
 | "Too many …" errors | Per-IP rate limits (below). Wait a minute. |
 
@@ -96,10 +96,10 @@ On screen, each claim shows its ball number. Tap it to see the original commenta
 The bar uses a small formula in `lib/winProb.js`: expected runs from balls left, reduced for wickets lost, turned into a percentage. Its constants were tuned on about 2,000 simulated chases, and predictions land within about 5 points of the real outcome rate. The AI is given the number and told to quote it. The app always displays the formula's value, whatever the AI writes. It's labelled "rough" on purpose. Pasted real matches have no stats feed, so there the AI may give a rough estimate. The app shows it only when the AI says it's confident, and labels it "rough AI estimate".
 
 ### 3. Caching keeps costs flat when many fans miss the same over
-If ten friends all ask "what happened since over 8?" with the same fan type and language, Claude is called once. The other nine get the saved answer. Only successful AI answers are cached, so a temporary failure doesn't stick. A daily cap (`AI_DAILY_CAP`, default 300) is a hard ceiling on spend. Once it's reached, everyone gets the basic recap with a label saying so.
+If ten friends all ask "what happened since over 8?" with the same fan type and language, Gemini is called once. The other nine get the saved answer. Only successful AI answers are cached, so a temporary failure doesn't stick. A daily cap (`AI_DAILY_CAP`, default 300) is a hard ceiling on spend. Once it's reached, everyone gets the basic recap with a label saying so.
 
 ### 4. A fallback is always ready
-If there's no key, the key is rejected, the daily cap is reached, the API times out (30 s), the API errors, the model declines, or the output fails validation, the server builds a recap from the feed with simple rules. It picks the wickets, sixes and biggest swings and fills fixed sentence templates in English, Hinglish or Marathi. It's less lively, but it can't invent anything, and it's clearly labelled "Basic recap · no AI". The live score, polls and room keep working either way.
+If there's no key, the key is rejected, the daily cap is reached, the API times out (30 s), Gemini returns 429 (quota) or a 5xx error, the model blocks the request, or the output isn't valid JSON in the right shape, the server builds a recap from the feed with simple rules. It picks the wickets, sixes and biggest swings and fills fixed sentence templates in English, Hinglish or Marathi. It's less lively, but it can't invent anything, and it's clearly labelled "Basic recap · no AI". The live score, polls and room keep working either way.
 
 ### 5. Safe on a public link
 - **No free text between strangers.** The watch room only has preset reaction buttons, plus polls shared from simulated-match catch-ups. Polls from pasted commentary stay private, so pasted text never reaches other viewers.
@@ -137,9 +137,9 @@ server.js            Express app: routes, validation, rate limits, live stream (
 lib/env.js           Loads .env before anything else reads it
 lib/matchEngine.js   Simulated T20 chase (seeded, one over per tick)
 lib/winProb.js       Rough win-chance formula
-lib/prompt.js        System prompt, output schema, prompt builder
-lib/claude.js        Claude API call, key check, daily cap
-lib/catchup.js       Builds context, calls Claude, grounding check, cache, fallback
+lib/prompt.js        Instructions, JSON output shape, prompt builder
+lib/ai.js            Gemini REST call (fetch), key check, daily cap
+lib/catchup.js       Builds context, calls Gemini, grounding check, cache, fallback
 lib/fallback.js      Rule-based recap in EN / Hinglish / Marathi
 lib/room.js          Watch room: preset reactions, polls, vote limits
 public/              index.html, styles.css, app.js (no framework, no build step)

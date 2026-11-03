@@ -249,7 +249,7 @@ function renderResult(d, language, secs) {
     }
   }
 
-  parts.push(h('p', { class: 'muted small' }, `${d.source === 'ai' ? 'Written by Claude from the match feed' : 'Built from the match feed without AI'} · ${secs}s · tap a ball number to see its commentary`));
+  parts.push(h('p', { class: 'muted small' }, `${d.source === 'ai' ? 'Written by AI (Gemini) from the match feed' : 'Built from the match feed without AI'} · ${secs}s · tap a ball number to see its commentary`));
   r.replaceChildren(...parts);
 }
 

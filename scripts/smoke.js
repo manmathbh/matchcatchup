@@ -1,12 +1,13 @@
 // Real end-to-end check of the AI path: npm run smoke
-// Makes 3 small Claude calls (English, Hinglish, Marathi), roughly 5–10 US cents in total.
+// Makes 3 small Gemini requests (English, Hinglish, Marathi), about 2k tokens in each.
+// On the free tier they count toward your daily request quota.
 // Never prints the API key.
 
 import '../lib/env.js';
 import { MatchEngine } from '../lib/matchEngine.js';
 import { Room } from '../lib/room.js';
 import { generateCatchup } from '../lib/catchup.js';
-import { verifyKey } from '../lib/claude.js';
+import { verifyKey } from '../lib/ai.js';
 
 const DEVANAGARI = /[\u0900-\u097F]/;
 const LATIN = /[A-Za-z]/;
@@ -27,13 +28,13 @@ function fail(msg) {
 async function main() {
   line('Missed It? smoke test\n');
 
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!key || key === 'sk-ant-...') fail('ANTHROPIC_API_KEY is missing from .env (or still the placeholder).');
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key || ['your-gemini-key', 'your-key-here'].includes(key)) fail('GEMINI_API_KEY is missing from .env (or still the placeholder).');
   line('API key: present');
 
   const { on, why } = await verifyKey();
   line(`AI mode: ${on ? 'ON' : 'OFF'} (${why})`);
-  if (!on) fail('The API did not accept the key. Check it in the Anthropic Console and that billing is set up.');
+  if (!on) fail('Gemini did not accept the key. Check it in Google AI Studio (aistudio.google.com/apikey).');
 
   const engine = new MatchEngine({ startAtOver: 13 });
   engine.newMatch();
@@ -74,7 +75,7 @@ async function main() {
   }
 
   if (problems.length) fail(`\n- ${problems.join('\n- ')}`);
-  line('PASS: all three catch-ups came from Claude, cited real balls and used the right language.');
+  line('PASS: all three catch-ups came from Gemini, cited real balls and used the right language.');
 }
 
 main().catch(() => fail('Unexpected error while running the smoke test.'));

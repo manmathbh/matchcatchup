@@ -11,6 +11,7 @@ import { verifyKey } from '../lib/ai.js';
 
 const DEVANAGARI = /[\u0900-\u097F]/;
 const LATIN = /[A-Za-z]/;
+const DEVANAGARI_DIGIT = /[\u0966-\u096F]/;
 
 const CASES = [
   { language: 'en', fanType: 'casual', sinceOver: 9, langOk: (t) => !DEVANAGARI.test(t), langRule: 'English, no Devanagari' },
@@ -66,11 +67,14 @@ async function main() {
     line(`  headline: ${out.headline}`);
     line(`  every shown claim cites a real ball id: ${allCited ? 'yes' : 'NO'}`);
     line(`  claims dropped by the server: ${dropped} of ${total}`);
-    line(`  language (${c.langRule}): ${langOk ? 'ok' : 'WRONG'}\n`);
+    const digitsOk = !DEVANAGARI_DIGIT.test(text);
+    line(`  language (${c.langRule}): ${langOk ? 'ok' : 'WRONG'}`);
+    line(`  numbers use digits 0-9 only: ${digitsOk ? 'yes' : 'NO'}\n`);
 
     if (!allCited) problems.push(`${label}: a shown claim lacks a valid ball id`);
     if (dropped > 1) problems.push(`${label}: server dropped ${dropped} ungrounded claims (expected 0–1)`);
     if (!langOk) problems.push(`${label}: output is not in ${c.langRule}`);
+    if (!digitsOk) problems.push(`${label}: numbers contain Devanagari digits`);
     if (out.things.length < 2) problems.push(`${label}: only ${out.things.length} grounded claim(s)`);
   }
 

@@ -5,6 +5,7 @@ import { MatchEngine } from '../lib/matchEngine.js';
 import { buildUserPrompt } from '../lib/prompt.js';
 import { fallbackRecap } from '../lib/fallback.js';
 import { Room, REACTIONS, hashIp } from '../lib/room.js';
+import { westernDigits } from '../lib/catchup.js';
 
 test('win probability handles finished states and is monotonic in runs needed', () => {
   assert.equal(winProbability({ runsNeeded: 0, ballsLeft: 10, wicketsLeft: 3 }), 100);
@@ -72,4 +73,9 @@ test('room: reactions only accept the preset list', () => {
   const item = room.react(0);
   assert.equal(item.text, REACTIONS[0]);
   assert.equal(room.feed.length, 1);
+});
+
+test('numbers are always shown with Western digits', () => {
+  assert.equal(westernDigits('SAH ९८/२, ४२ चेंडूत ६6 धावा'), 'SAH 98/2, 42 चेंडूत 66 धावा');
+  assert.equal(westernDigits('no digits here'), 'no digits here');
 });
